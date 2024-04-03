@@ -1,4 +1,4 @@
-.PHONY: all build run clean fmt test
+.PHONY: all build run clean fmt test test_coverage vet
 
 # Variables
 PROJECT_NAME="chatApp"
@@ -17,6 +17,7 @@ run: build
 
 # Clean up the binary
 clean:
+	go clean 
 	rm -f bin/$(PROJECT_NAME)
 
 # Format Go code
@@ -26,3 +27,9 @@ fmt:
 # Run tests
 test:
 	go test ./...
+
+test_coverage:
+ 	go test ./... -coverprofile=coverage.out
+
+vet:
+ 	go vet
