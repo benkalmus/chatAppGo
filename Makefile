@@ -1,15 +1,15 @@
 .PHONY: all build run clean fmt test test_coverage vet
 
 # Variables
-PROJECT_NAME="chatApp"
-GO_FILES=$(wildcard *.go)
+PROJECT_NAME="chat_app"
+GO_FILES=$(wildcard ./cmd/*.go ./internal/*.go ./pkg/*.go )
 
 # Default target
 all: build
 
 # Build the Go binary
 build:
-	go build -o bin/$(PROJECT_NAME) .
+	go build -o bin/$(PROJECT_NAME) ./cmd
 
 # Run the Go binary
 run: build
@@ -22,7 +22,7 @@ clean:
 
 # Format Go code
 fmt:
-	go fmt $(GO_FILES)
+	for f in ${GO_FILES[@]}; do go fmt -w $$f; done
 
 # Run tests
 test:
