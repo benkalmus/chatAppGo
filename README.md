@@ -32,8 +32,8 @@ This app is intended to be a simple message broker (pub-sub) implementation in g
 
 ## Asynchronous Message broker
 
-Message `Broker` consists of many `Rooms`. Each `Room` is a process containing a slice of `Subscriber` channels and slice of `Publisher` channels.
-`Publisher` channels are used to asynchronously receive `Message`s, which are stored in-memory by the `Room` until it is free to publish downstream. A `room` may be busy during a `subscribe` or `unsubscribe` operation, in which case it will lock the `Subscriber` slice until it is done. Messages during that time are buffered and processed when unlocked. 
+Message `Broker` consists of many `Rooms`. Each `Room` is a process containing a map of `Subscriber` channels and `Publisher` channel.
+`Publisher` channel is used to asynchronously receive `Message`s, which are stored in-memory by the `Room` until it is free to publish downstream. A `room` may be busy during a `subscribe` or `unsubscribe` operation, in which case it will lock the `Subscriber` slice until it is done. Messages during that time are buffered and processed when unlocked. 
 
 `Subscriptions` are done async and buffered, as to be processed later because, in this implementation we wish Publishing to take higher priority. If lots of messages are being published, a timer is created to force the processing of subscriptions.
 
