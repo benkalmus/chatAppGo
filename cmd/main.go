@@ -1,15 +1,14 @@
 package main
 
 import (
-//	"fmt"
-	"os"
-	"time"
+	//	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"os"
+	"time"
 	// internal packages
 	"chat_app/internal/message_broker"
 )
-
 
 // Main
 // ========================================

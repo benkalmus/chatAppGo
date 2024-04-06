@@ -12,27 +12,27 @@ type ActionType int32
 
 const (
 	//enum
-	SUBSCRIBE ActionType	= 1
-	UNSUBSCRIBE ActionType 	= 2
+	SUBSCRIBE   ActionType = 1
+	UNSUBSCRIBE ActionType = 2
 
-	
-	BUFFER_ACTIONS = 10
-	BUFFER_PUBLISH = 50
+	BUFFER_ACTIONS     = 10
+	BUFFER_PUBLISH     = 50
 	BUFFER_SUB_CHANNEL = 50
 )
 
 // ========================================
-// Types 
+// Types
 // ========================================
 type PubSub struct {
 	// set of room ptrs
 	Rooms map[string]*Room
 	// maybe
 	// Rooms map[*Room]struct{}
-	
-	// access to rooms
+
+	// TODO: access to rooms
 	mutex sync.Mutex
 }
+
 // func (r1 *Room) Equals(r2 *Room) bool {
 //     return r1.name == r2.name
 // }
@@ -40,20 +40,19 @@ type PubSub struct {
 //     return !r1.Equals(r2)
 // }
 
-
 type Room struct {
 	Name string
 	// for async publishing of messages
 	PublishChan chan Message
 	//for async buffering of sub/unsub actions
 	ActionsChan chan Action
-	stopChan 	chan bool	// for closing the room gracefully
+	stopChan    chan bool // for closing the room gracefully
 	//TODO, store channels instead?
 	subscribers sync.Map // map[Subscriber]struct{}
 }
 
 type Subscriber struct {
-	id string
+	id   string
 	room *Room // pointer to Room this Subscriber belongs to
 	//TODO, convert this to receive-only channel
 	// this can be done by storing channels in the Room instead of Subscribers. Then when a sub subscribes to a room, a channel is created for it with and converted to receive only with (<-chan Message)(RecvChannel)
@@ -62,9 +61,9 @@ type Subscriber struct {
 
 type Message struct {
 	// unique msg hash
-	id []byte
+	id        []byte
 	timestamp time.Time
-	Payload interface{} 
+	Payload   interface{}
 }
 
 // Actions
@@ -74,16 +73,14 @@ type Action interface {
 	UpdateSubs(*Room)
 }
 
-type SubscribeAction struct{
-	sub Subscriber
+type SubscribeAction struct {
+	sub        Subscriber
 	statusChan *chan bool
 }
-type UnsubscribeAction struct{
-	sub Subscriber
+type UnsubscribeAction struct {
+	sub        Subscriber
 	statusChan *chan bool
 }
-
-
 
 // ========================================
 // API
@@ -104,7 +101,7 @@ func NewRoom(name string) *Room {
 		// TODO, add optional buffer values
 		PublishChan: make(chan Message, BUFFER_PUBLISH),
 		ActionsChan: make(chan Action, BUFFER_ACTIONS),
-		stopChan: 	make(chan bool, 1),
+		stopChan:    make(chan bool, 1),
 		subscribers: sync.Map{},
 	}
 }
@@ -133,16 +130,16 @@ func (r *Room) StartRoom() {
 func (r *Room) StopRoom() {
 	log.Info().Msgf("Sending stop request to room %v", r.Name)
 	r.stopChan <- true
-}	
+}
 
 // Subscriber
 // ========================================
 
 func NewSubscriber(id string) *Subscriber {
 	return &Subscriber{
-		id: id,
+		id:       id,
 		RecvChan: make(chan Message, BUFFER_SUB_CHANNEL),
-		room: nil,
+		room:     nil,
 	}
 }
 
@@ -164,22 +161,20 @@ func (r *Room) Run() {
 	log.Info().Msgf("Starting room %v", r.Name)
 	for {
 		select {
-		case act := <- r.ActionsChan:
+		case act := <-r.ActionsChan:
 			act.UpdateSubs(r)
-		case msg := <- r.PublishChan:
+		case msg := <-r.PublishChan:
 			log.Debug().Msgf("Room %v received msg %v", r.Name, msg.Payload)
 			handlePublish(r, msg)
-		case <- r.stopChan:
+		case <-r.stopChan:
 			log.Info().Msgf("Received close request for room %v", r.Name)
 			return
 		}
 	}
 }
 
-
 // Internal func
 // ========================================
-
 
 func (s *SubscribeAction) UpdateSubs(r *Room) {
 	log.Info().Msgf("Subscribing new %v to room %v", s.sub.id, r.Name)

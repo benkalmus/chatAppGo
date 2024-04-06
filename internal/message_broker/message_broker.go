@@ -2,12 +2,10 @@ package message_broker
 
 import (
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"sync"
 	"time"
-	"github.com/rs/zerolog/log"
 )
-
-
 
 type Message struct {
 	Topic        string
