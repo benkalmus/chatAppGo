@@ -161,11 +161,11 @@ func (r *Room) Run() {
 	log.Info().Msgf("Starting room %v", r.Name)
 	for {
 		select {
-		case act := <-r.ActionsChan:
-			act.UpdateSubs(r)
 		case msg := <-r.PublishChan:
 			log.Debug().Msgf("Room %v received msg %v", r.Name, msg.Payload)
 			handlePublish(r, msg)
+		case act := <-r.ActionsChan:
+			act.UpdateSubs(r)
 		case <-r.stopChan:
 			log.Info().Msgf("Received close request for room %v", r.Name)
 			return
