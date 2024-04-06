@@ -1,4 +1,5 @@
 .PHONY: all build run clean fmt test test_coverage vet
+include vsn.mk
 
 # Variables
 PROJECT_NAME="chat_app"
@@ -36,3 +37,6 @@ test_coverage:
 
 vet:
 	go vet
+
+version:
+	@echo $(PROJECT_VERSION)

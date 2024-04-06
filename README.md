@@ -26,7 +26,7 @@ This app is intended to be a simple message broker (pub-sub) implementation in g
 - Continuous Tests (consider a framework)
 - Load tests
 - Perf Profiling
-- Docker containerised 
+- Docker containerized 
 
 # Implementation Details 
 
