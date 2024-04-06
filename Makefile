@@ -2,7 +2,13 @@
 
 # Variables
 PROJECT_NAME="chat_app"
-GO_FILES=$(wildcard ./cmd/*.go ./internal/*.go ./pkg/*.go )
+SRC_DIRS := cmd internal pkg
+## Find all files in SRC_DIRS and its subdirs
+GO_FILES := $(wildcard $(addsuffix /*.go, $(SRC_DIRS)) $(addsuffix /**/*.go, $(SRC_DIRS)) )
+
+# GO_FILES := $(shell find . -type f -name '*.go')
+check: 
+	for f in $(GO_FILES); do echo "$$f:"; done
 
 # Default target
 all: build
@@ -22,7 +28,7 @@ clean:
 
 # Format Go code
 fmt:
-	for f in ${GO_FILES[@]}; do go fmt -w $$f; done
+	for f in $(GO_FILES); do gofmt -l -d $$f; done
 
 # Run tests
 test:

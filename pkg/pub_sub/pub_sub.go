@@ -1,9 +1,24 @@
 package pubsub
 
 import (
-	"github.com/rs/zerolog/log"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
+)
+
+// Constant defs
+type ActionType int32
+
+const (
+	//enum
+	SUBSCRIBE ActionType	= 1
+	UNSUBSCRIBE ActionType 	= 2
+
+	
+	BUFFER_ACTIONS = 10
+	BUFFER_PUBLISH = 50
+	BUFFER_SUB_CHANNEL = 50
 )
 
 // ========================================
@@ -18,16 +33,6 @@ type PubSub struct {
 	// access to rooms
 	mutex sync.Mutex
 }
-
-
-type Room struct {
-	Name string
-	// for async publishing of messages
-	Publish chan Message
-	//for async buffering of sub/unsub actions
-	Actions chan Subscriber 
-	subscribers sync.Map // map[Subscriber]struct{}
-}
 // func (r1 *Room) Equals(r2 *Room) bool {
 //     return r1.name == r2.name
 // }
@@ -35,16 +40,49 @@ type Room struct {
 //     return !r1.Equals(r2)
 // }
 
+
+type Room struct {
+	Name string
+	// for async publishing of messages
+	PublishChan chan Message
+	//for async buffering of sub/unsub actions
+	ActionsChan chan Action
+	stopChan 	chan bool	// for closing the room gracefully
+	//TODO, store channels instead?
+	subscribers sync.Map // map[Subscriber]struct{}
+}
+
 type Subscriber struct {
 	id string
+	room *Room // pointer to Room this Subscriber belongs to
+	//TODO, convert this to receive-only channel
+	// this can be done by storing channels in the Room instead of Subscribers. Then when a sub subscribes to a room, a channel is created for it with and converted to receive only with (<-chan Message)(RecvChannel)
+	RecvChan chan Message
 }
 
 type Message struct {
-	// unique  msg hash
+	// unique msg hash
 	id []byte
 	timestamp time.Time
 	Payload interface{} 
 }
+
+// Actions
+// controling subscribers
+// ========================================
+type Action interface {
+	UpdateSubs(*Room)
+}
+
+type SubscribeAction struct{
+	sub Subscriber
+	statusChan *chan bool
+}
+type UnsubscribeAction struct{
+	sub Subscriber
+	statusChan *chan bool
+}
+
 
 
 // ========================================
@@ -58,24 +96,127 @@ func NewPubSub() *PubSub {
 	}
 }
 
-
 // Room
+// ========================================
 func NewRoom(name string) *Room {
 	return &Room{
 		Name: name,
-		Publish: make(chan Message),
-		Actions: make(chan Subscriber),
+		// TODO, add optional buffer values
+		PublishChan: make(chan Message, BUFFER_PUBLISH),
+		ActionsChan: make(chan Action, BUFFER_ACTIONS),
+		stopChan: 	make(chan bool, 1),
+		subscribers: sync.Map{},
 	}
 }
 
-// Room loop: handles incoming publish and subscription requests
-func (r *Room) run() {
-	log.Info().Msgf("Starting room %v", r.name)
-
-
+func (r *Room) Subscribe(sub *Subscriber) chan bool {
+	// create a channel that wil be used to inform the Subscbriber when the action succeeded
+	respChan := make(chan bool)
+	r.ActionsChan <- &SubscribeAction{sub: *sub, statusChan: &respChan}
+	return respChan
 }
 
-// Actions  
+func (r *Room) Unsubscribe(sub *Subscriber) chan bool {
+	respChan := make(chan bool)
+	r.ActionsChan <- &UnsubscribeAction{sub: *sub, statusChan: &respChan}
+	return respChan
+}
+
+func (r *Room) Publish(msg Message) {
+	r.PublishChan <- msg
+}
+
+func (r *Room) StartRoom() {
+	go r.Run()
+}
+
+func (r *Room) StopRoom() {
+	log.Info().Msgf("Sending stop request to room %v", r.Name)
+	r.stopChan <- true
+}	
+
+// Subscriber
+// ========================================
+
+func NewSubscriber(id string) *Subscriber {
+	return &Subscriber{
+		id: id,
+		RecvChan: make(chan Message, BUFFER_SUB_CHANNEL),
+		room: nil,
+	}
+}
+
+func (s *Subscriber) Recv() <-chan Message {
+	return s.RecvChan
+}
+
+func (s *Subscriber) Stop() {
+	StatusChan := s.room.Unsubscribe(s)
+	// wait for StatusChannel to close
+	<-StatusChan
+	log.Info().Msgf("Unsubscribed %v from room %v", s.id, s.room.Name)
+}
+
+// Room loop: handles incoming publish and subscription requests
+func (r *Room) Run() {
+	defer r.Cleanup()
+
+	log.Info().Msgf("Starting room %v", r.Name)
+	for {
+		select {
+		case act := <- r.ActionsChan:
+			act.UpdateSubs(r)
+		case msg := <- r.PublishChan:
+			log.Debug().Msgf("Room %v received msg %v", r.Name, msg.Payload)
+			handlePublish(r, msg)
+		case <- r.stopChan:
+			log.Info().Msgf("Received close request for room %v", r.Name)
+			return
+		}
+	}
+}
 
 
 // Internal func
+// ========================================
+
+
+func (s *SubscribeAction) UpdateSubs(r *Room) {
+	log.Info().Msgf("Subscribing new %v to room %v", s.sub.id, r.Name)
+	r.subscribers.Store(s.sub, struct{}{})
+	*s.statusChan <- true
+	close(*s.statusChan)
+}
+func (s *UnsubscribeAction) UpdateSubs(r *Room) {
+	log.Info().Msgf("Unsubscribing %v from room %v", s.sub.id, r.Name)
+	r.subscribers.Delete(s.sub)
+	*s.statusChan <- true
+	close(s.sub.RecvChan)
+	close(*s.statusChan)
+}
+
+func handlePublish(r *Room, msg Message) {
+	log.Info().Msgf("Publishing to room %v", r.Name)
+	//iterate over sync.Map in r.subscribers
+	r.subscribers.Range(func(sub, _ interface{}) bool {
+		castSub := sub.(Subscriber)
+		//todo : async go
+		castSub.RecvChan <- msg
+		return true
+	})
+
+}
+
+func (r *Room) Cleanup() {
+	// inform subscribers of room stop
+	r.subscribers.Range(func(sub, _ interface{}) bool {
+		castSub := sub.(Subscriber)
+		close(castSub.RecvChan)
+		return true
+	})
+	// Close all channels
+	close(r.ActionsChan)
+	close(r.PublishChan)
+	close(r.stopChan)
+	log.Info().Msgf("Cleaned and closed room %v", r.Name)
+}
