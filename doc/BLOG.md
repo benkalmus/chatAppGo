@@ -59,6 +59,11 @@ For this reason, I decided to go create a Publishing and an Actions channel for 
 
 TODO, describe the process of writing the code, with some explanations of types, pointers, structs and interfaces. 
 
+API decisions
+Check if Room is running? 
+What happens if a Room crashes? 
+
+
 # Testing
 
 Okay, so I've built a PubSub containing a set of Rooms, each Room containing a set of Subscribers, and each Subscriber containing an individual link to its room and a channel for receiving messages. I deliberately left Message type to be an interface{}, as this will allow me to change  what kind of messages i want to send depending on the project. The idea is that I can reuse this code in the future and create a pub sub for an entirely different purpose to chat app. 

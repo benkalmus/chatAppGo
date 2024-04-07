@@ -26,12 +26,7 @@ const (
 // ========================================
 type PubSub struct {
 	// set of room ptrs
-	// TODO sync.Map
 	Rooms sync.Map
-	// Rooms map[string]*Room
-
-	// TODO: access to rooms
-	// mutex sync.Mutex
 }
 
 // func (r1 *Room) Equals(r2 *Room) bool {
@@ -47,7 +42,7 @@ type Room struct {
 	PublishChan chan Message
 	//for async buffering of sub/unsub actions
 	ActionsChan chan Action
-	stopChan    chan bool // for closing the room gracefully
+	StopChan    chan bool // for closing the room gracefully
 	//TODO, store channels instead?
 	subscribers sync.Map // map[Subscriber]struct{}
 }
@@ -94,7 +89,7 @@ func NewPubSub() *PubSub {
 	}
 }
 
-// Room
+// PubSub
 // ========================================
 func (ps *PubSub) NewRoom(name string) *Room {
 	room := &Room{
@@ -102,11 +97,51 @@ func (ps *PubSub) NewRoom(name string) *Room {
 		// TODO, add optional buffer values  func (buffers ...map[string]int )
 		PublishChan: make(chan Message, BUFFER_PUBLISH),
 		ActionsChan: make(chan Action, BUFFER_ACTIONS),
-		stopChan:    make(chan bool, 1),
+		StopChan:    make(chan bool, 1),
 		subscribers: sync.Map{},
 	}
 	ps.Rooms.Store(name, room)
+	ps.startRoom(room)
 	return room
+}
+
+// async
+func (ps *PubSub) startRoom(r *Room) {
+	go r.Run()
+}
+
+// sync
+func (ps *PubSub) StopRoom(r *Room) error {
+	_, ok := ps.Rooms.Load(r.Name)
+	if !ok {
+		return fmt.Errorf("room '%v' not found in pubsub '%v", r.Name, &ps)
+	}
+	log.Info().Msgf("Sending stop request to room '%v'", r.Name)
+	r.StopChan <- true
+	ps.Rooms.Delete(r.Name)
+	return nil
+}
+
+// Room
+// ========================================
+
+// Room Goroutine loop: handles incoming publish and subscription requests
+func (r *Room) Run() {
+	defer r.cleanup()
+
+	log.Info().Msgf("Starting room '%v'", r.Name)
+	for {
+		select {
+		case msg := <-r.PublishChan:
+			log.Debug().Msgf("publishing msg '%v' to '%v'", msg.Payload, r.Name,)
+			handlePublish(r, msg)
+		case act := <-r.ActionsChan:
+			act.updateSubs(r)
+		case <-r.StopChan:
+			log.Info().Msgf("'%v' received close request", r.Name)
+			return
+		}
+	}
 }
 
 func (r *Room) Subscribe(sub *Subscriber) chan bool {
@@ -136,6 +171,7 @@ func (r *Room) Publish(msgs ...interface{}) error {
 	return nil
 }
 
+
 func NewMessage(text string) Message {
 	//create a unique random for id
 	bytes := make([]byte, idHashLength)
@@ -144,15 +180,6 @@ func NewMessage(text string) Message {
 		panic(err)
 	}
 	return Message{bytes, time.Now(), text}
-}
-
-func (r *Room) StartRoom() {
-	go r.Run()
-}
-
-func (r *Room) StopRoom() {
-	log.Info().Msgf("Sending stop request to room '%v'", r.Name)
-	r.stopChan <- true
 }
 
 // Subscriber
@@ -175,25 +202,6 @@ func (s *Subscriber) Stop() {
 	// wait for StatusChannel to close
 	<-StatusChan
 	log.Info().Msgf("Unsubscribed '%v' from room '%v'", s.id, s.room.Name)
-}
-
-// Room loop: handles incoming publish and subscription requests
-func (r *Room) Run() {
-	defer r.cleanup()
-
-	log.Info().Msgf("Starting room '%v'", r.Name)
-	for {
-		select {
-		case msg := <-r.PublishChan:
-			log.Debug().Msgf("publishing msg '%v' to '%v'", msg.Payload, r.Name,)
-			handlePublish(r, msg)
-		case act := <-r.ActionsChan:
-			act.updateSubs(r)
-		case <-r.stopChan:
-			log.Info().Msgf("'%v' received close request", r.Name)
-			return
-		}
-	}
 }
 
 // Internal func
@@ -235,6 +243,6 @@ func (r *Room) cleanup() {
 	// Close all channels
 	close(r.ActionsChan)
 	close(r.PublishChan)
-	close(r.stopChan)
+	close(r.StopChan)
 	log.Info().Msgf("Cleaned and closed room '%v'", r.Name)
 }
