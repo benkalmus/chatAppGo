@@ -18,20 +18,20 @@ func TestMain(m *testing.M) {
 
 func TestPubSub(t *testing.T) {
 	log.Info().Msgf("Starting test %v", t.Name())
-	//p := pubsub.NewPubSub()
-	r := pubsub.NewRoom("room1")
-	r.StartRoom()
-	sub := pubsub.NewSubscriber("sub1")
-	statusChan := r.Subscribe(sub)
+	testPubSub := pubsub.NewPubSub()
+	testRoom := testPubSub.NewRoom("testRoom")
+	testRoom.StartRoom()
+	testSub := pubsub.NewSubscriber("testSub")
+	statusChan := testRoom.Subscribe(testSub)
 
 	if status := <-statusChan; !status {
 		t.Errorf("subscription failed")
 	}
 	// Publish a message on room1
-	r.Publish("hello")
+	testRoom.Publish("hello")
 
 	//  Wait for one message
-	message := <- sub.Recv()
+	message := <- testSub.Recv()
 	log.Debug().Msgf("Sub Received: %v\n", message.Payload)
 	assert.Equal(t, "hello", message.Payload)
 }

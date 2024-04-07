@@ -26,12 +26,12 @@ const (
 // ========================================
 type PubSub struct {
 	// set of room ptrs
-	Rooms map[string]*Room
-	// maybe
-	// Rooms map[*Room]struct{}
+	// TODO sync.Map
+	Rooms sync.Map
+	// Rooms map[string]*Room
 
 	// TODO: access to rooms
-	mutex sync.Mutex
+	// mutex sync.Mutex
 }
 
 // func (r1 *Room) Equals(r2 *Room) bool {
@@ -90,21 +90,23 @@ type UnsubscribeAction struct {
 // PubSub
 func NewPubSub() *PubSub {
 	return &PubSub{
-		Rooms: make(map[string]*Room),
+		Rooms: sync.Map{},
 	}
 }
 
 // Room
 // ========================================
-func NewRoom(name string) *Room {
-	return &Room{
+func (ps *PubSub) NewRoom(name string) *Room {
+	room := &Room{
 		Name: name,
-		// TODO, add optional buffer values
+		// TODO, add optional buffer values  func (buffers ...map[string]int )
 		PublishChan: make(chan Message, BUFFER_PUBLISH),
 		ActionsChan: make(chan Action, BUFFER_ACTIONS),
 		stopChan:    make(chan bool, 1),
 		subscribers: sync.Map{},
 	}
+	ps.Rooms.Store(name, room)
+	return room
 }
 
 func (r *Room) Subscribe(sub *Subscriber) chan bool {
@@ -121,14 +123,14 @@ func (r *Room) Unsubscribe(sub *Subscriber) chan bool {
 }
 func (r *Room) Publish(msgs ...interface{}) error {
 	for _, msg := range msgs {
-		switch msg.(type) {
+		switch msg := msg.(type) {
 		case Message:
-			r.PublishChan <- msg.(Message)
+			r.PublishChan <- msg
 		case string:
-			r.PublishChan <- NewMessage(msg.(string))
+			r.PublishChan <- NewMessage(msg)
 		default:
-			log.Error().Msgf("Attempt to publish unsupported msg %T", msg)
-			return fmt.Errorf("Unsupported publish type %T", msg)
+			log.Error().Msgf("Attempt to publish unsupported msg '%T'", msg)
+			return fmt.Errorf("unsupported publish type '%T'", msg)
 		}
 	}
 	return nil
@@ -149,7 +151,7 @@ func (r *Room) StartRoom() {
 }
 
 func (r *Room) StopRoom() {
-	log.Info().Msgf("Sending stop request to room %v", r.Name)
+	log.Info().Msgf("Sending stop request to room '%v'", r.Name)
 	r.stopChan <- true
 }
 
@@ -172,23 +174,23 @@ func (s *Subscriber) Stop() {
 	StatusChan := s.room.Unsubscribe(s)
 	// wait for StatusChannel to close
 	<-StatusChan
-	log.Info().Msgf("Unsubscribed %v from room %v", s.id, s.room.Name)
+	log.Info().Msgf("Unsubscribed '%v' from room '%v'", s.id, s.room.Name)
 }
 
 // Room loop: handles incoming publish and subscription requests
 func (r *Room) Run() {
 	defer r.cleanup()
 
-	log.Info().Msgf("Starting room %v", r.Name)
+	log.Info().Msgf("Starting room '%v'", r.Name)
 	for {
 		select {
 		case msg := <-r.PublishChan:
-			log.Debug().Msgf("Room %v received msg %v", r.Name, msg.Payload)
+			log.Debug().Msgf("publishing msg '%v' to '%v'", msg.Payload, r.Name,)
 			handlePublish(r, msg)
 		case act := <-r.ActionsChan:
 			act.updateSubs(r)
 		case <-r.stopChan:
-			log.Info().Msgf("Received close request for room %v", r.Name)
+			log.Info().Msgf("'%v' received close request", r.Name)
 			return
 		}
 	}
@@ -198,13 +200,13 @@ func (r *Room) Run() {
 // ========================================
 
 func (s *SubscribeAction) updateSubs(r *Room) {
-	log.Info().Msgf("Subscribing new %v to room %v", s.sub.id, r.Name)
+	log.Info().Msgf("Subscribing new '%v' to room '%v'", s.sub.id, r.Name)
 	r.subscribers.Store(s.sub, struct{}{})
 	*s.statusChan <- true
 	close(*s.statusChan)
 }
 func (s *UnsubscribeAction) updateSubs(r *Room) {
-	log.Info().Msgf("Unsubscribing %v from room %v", s.sub.id, r.Name)
+	log.Info().Msgf("Unsubscribing '%v' from room '%v'", s.sub.id, r.Name)
 	r.subscribers.Delete(s.sub)
 	*s.statusChan <- true
 	close(s.sub.RecvChan)
@@ -212,7 +214,7 @@ func (s *UnsubscribeAction) updateSubs(r *Room) {
 }
 
 func handlePublish(r *Room, msg Message) {
-	log.Info().Msgf("Publishing to room %v", r.Name)
+	log.Info().Msgf("Publishing to room '%v'", r.Name)
 	//iterate over sync.Map in r.subscribers
 	r.subscribers.Range(func(sub, _ interface{}) bool {
 		castSub := sub.(Subscriber)
@@ -234,5 +236,5 @@ func (r *Room) cleanup() {
 	close(r.ActionsChan)
 	close(r.PublishChan)
 	close(r.stopChan)
-	log.Info().Msgf("Cleaned and closed room %v", r.Name)
+	log.Info().Msgf("Cleaned and closed room '%v'", r.Name)
 }

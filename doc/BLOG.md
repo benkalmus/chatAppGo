@@ -79,6 +79,7 @@ Now that I'm happy with my initial iteration, I want to start testing this code,
         - publish 
             - send message, multiple messages 
             - custom message payload types
+            - messages arrive in FIFO order, check via timestamp 
 
     - add many rooms
 
