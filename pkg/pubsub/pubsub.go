@@ -1,7 +1,6 @@
 package pubsub
 
 import (
-	"crypto"
 	"crypto/rand"
 	"fmt"
 	"sync"
@@ -15,11 +14,11 @@ type ActionType int32
 
 const (
 	//defaults
-	BUFFER_ACTIONS     	= 10
-	BUFFER_PUBLISH     	= 50
-	BUFFER_SUB_CHANNEL 	= 50
+	BUFFER_ACTIONS     = 10
+	BUFFER_PUBLISH     = 50
+	BUFFER_SUB_CHANNEL = 50
 
-	idHashLength 		= 8
+	idHashLength = 8
 )
 
 // ========================================
@@ -109,7 +108,7 @@ func NewRoom(name string) *Room {
 }
 
 func (r *Room) Subscribe(sub *Subscriber) chan bool {
-	// create a channel that wil be used to inform the Subscbriber when the action succeeded
+	// create a channel that wil be used to inform the Subscriber when the action succeeded
 	respChan := make(chan bool)
 	r.ActionsChan <- &SubscribeAction{sub: *sub, statusChan: &respChan}
 	return respChan
@@ -120,8 +119,8 @@ func (r *Room) Unsubscribe(sub *Subscriber) chan bool {
 	r.ActionsChan <- &UnsubscribeAction{sub: *sub, statusChan: &respChan}
 	return respChan
 }
-func (r *Room) Publish(msgs ...interface{}) error {	
-	for _, msg := range msgs{
+func (r *Room) Publish(msgs ...interface{}) error {
+	for _, msg := range msgs {
 		switch msg.(type) {
 		case Message:
 			r.PublishChan <- msg.(Message)
@@ -183,10 +182,10 @@ func (r *Room) Run() {
 	log.Info().Msgf("Starting room %v", r.Name)
 	for {
 		select {
-		case msg := <- r.PublishChan:
+		case msg := <-r.PublishChan:
 			log.Debug().Msgf("Room %v received msg %v", r.Name, msg.Payload)
 			handlePublish(r, msg)
-		case act := <- r.ActionsChan:
+		case act := <-r.ActionsChan:
 			act.updateSubs(r)
 		case <-r.stopChan:
 			log.Info().Msgf("Received close request for room %v", r.Name)
