@@ -29,13 +29,6 @@ type PubSub struct {
 	Rooms sync.Map
 }
 
-// func (r1 *Room) Equals(r2 *Room) bool {
-//     return r1.name == r2.name
-// }
-// func (r1 *Room) NotEquals(r2 *Room) bool {
-//     return !r1.Equals(r2)
-// }
-
 type Room struct {
 	Name string
 	// for async publishing of messages
@@ -47,9 +40,15 @@ type Room struct {
 	subscribers sync.Map // map[Subscriber]struct{}
 }
 
+type RoomOpts struct {
+	PublishChanBuffer int
+	ActionsChanBuffer int 
+}
+
 type Subscriber struct {
-	id   string
-	room *Room // pointer to Room this Subscriber belongs to
+	Id   string
+	//TODO
+	Room *Room // pointer to Room this Subscriber belongs to
 	//TODO, convert this to receive-only channel
 	// this can be done by storing channels in the Room instead of Subscribers. Then when a sub subscribes to a room, a channel is created for it with and converted to receive only with (<-chan Message)(RecvChannel)
 	RecvChan chan Message
@@ -57,8 +56,8 @@ type Subscriber struct {
 
 type Message struct {
 	// unique msg id
-	id        []byte
-	timestamp time.Time
+	Id        []byte
+	Timestamp time.Time
 	Payload   interface{}
 }
 
@@ -91,16 +90,22 @@ func NewPubSub() *PubSub {
 
 // PubSub
 // ========================================
-func (ps *PubSub) NewRoom(name string) *Room {
+func (ps *PubSub) NewRoom(name string, opts *RoomOpts) *Room {
+	if opts == nil {
+		opts = &RoomOpts{
+			PublishChanBuffer: BUFFER_PUBLISH,
+			ActionsChanBuffer: BUFFER_ACTIONS,
+		}
+	}
+
 	room := &Room{
 		Name: name,
-		// TODO, add optional buffer values  func (buffers ...map[string]int )
-		PublishChan: make(chan Message, BUFFER_PUBLISH),
-		ActionsChan: make(chan Action, BUFFER_ACTIONS),
+		PublishChan: make(chan Message, opts.PublishChanBuffer),
+		ActionsChan: make(chan Action, opts.ActionsChanBuffer),
 		StopChan:    make(chan bool, 1),
 		subscribers: sync.Map{},
 	}
-	ps.Rooms.Store(name, room)
+	ps.Rooms.Store(name,room)
 	ps.startRoom(room)
 	return room
 }
@@ -146,13 +151,13 @@ func (r *Room) Run() {
 
 func (r *Room) Subscribe(sub *Subscriber) chan bool {
 	// create a channel that wil be used to inform the Subscriber when the action succeeded
-	respChan := make(chan bool)
+	respChan := make(chan bool, 1)
 	r.ActionsChan <- &SubscribeAction{sub: *sub, statusChan: &respChan}
 	return respChan
 }
 
 func (r *Room) Unsubscribe(sub *Subscriber) chan bool {
-	respChan := make(chan bool)
+	respChan := make(chan bool, 1)
 	r.ActionsChan <- &UnsubscribeAction{sub: *sub, statusChan: &respChan}
 	return respChan
 }
@@ -187,34 +192,43 @@ func NewMessage(text string) Message {
 
 func NewSubscriber(id string) *Subscriber {
 	return &Subscriber{
-		id:       id,
+		Id:       id,
 		RecvChan: make(chan Message, BUFFER_SUB_CHANNEL),
-		room:     nil,
+		Room:     nil,
 	}
 }
 
 func (s *Subscriber) Recv() <-chan Message {
 	return s.RecvChan
 }
+func (s *Subscriber) AwaitSubscribe(respChan chan bool, r *Room) error {
+	if _, ok := <-respChan; !ok {
+		return fmt.Errorf("failed to subscribe '%v' to room '%v'", s.Id, r.Name)
+	}
+	s.Room = r
+	log.Info().Msgf("Subscribed '%v' to room '%v'", s.Id, r.Name)
+	return nil 
+}
+
 
 func (s *Subscriber) Stop() {
-	StatusChan := s.room.Unsubscribe(s)
+	StatusChan := s.Room.Unsubscribe(s)
 	// wait for StatusChannel to close
 	<-StatusChan
-	log.Info().Msgf("Unsubscribed '%v' from room '%v'", s.id, s.room.Name)
+	log.Info().Msgf("Unsubscribed '%v' from room '%v'", s.Id, s.Room.Name)
 }
 
 // Internal func
 // ========================================
 
 func (s *SubscribeAction) updateSubs(r *Room) {
-	log.Info().Msgf("Subscribing new '%v' to room '%v'", s.sub.id, r.Name)
+	log.Info().Msgf("Subscribing new '%v' to room '%v'", s.sub.Id, r.Name)
 	r.subscribers.Store(s.sub, struct{}{})
 	*s.statusChan <- true
 	close(*s.statusChan)
 }
 func (s *UnsubscribeAction) updateSubs(r *Room) {
-	log.Info().Msgf("Unsubscribing '%v' from room '%v'", s.sub.id, r.Name)
+	log.Info().Msgf("Unsubscribing '%v' from room '%v'", s.sub.Id, r.Name)
 	r.subscribers.Delete(s.sub)
 	*s.statusChan <- true
 	close(s.sub.RecvChan)
@@ -224,13 +238,18 @@ func (s *UnsubscribeAction) updateSubs(r *Room) {
 func handlePublish(r *Room, msg Message) {
 	log.Info().Msgf("Publishing to room '%v'", r.Name)
 	//iterate over sync.Map in r.subscribers
+	wg := sync.WaitGroup{}
 	r.subscribers.Range(func(sub, _ interface{}) bool {
 		castSub := sub.(Subscriber)
 		//todo : async go
-		castSub.RecvChan <- msg
+		wg.Add(1)
+		go func(){
+			castSub.RecvChan <- msg
+			wg.Done()
+		}()
 		return true
 	})
-
+	wg.Wait()
 }
 
 func (r *Room) cleanup() {
