@@ -1,6 +1,9 @@
 package pubsub
 
 import (
+	"crypto"
+	"crypto/rand"
+	"fmt"
 	"sync"
 	"time"
 
@@ -11,13 +14,12 @@ import (
 type ActionType int32
 
 const (
-	//enum
-	SUBSCRIBE   ActionType = 1
-	UNSUBSCRIBE ActionType = 2
+	//defaults
+	BUFFER_ACTIONS     	= 10
+	BUFFER_PUBLISH     	= 50
+	BUFFER_SUB_CHANNEL 	= 50
 
-	BUFFER_ACTIONS     = 10
-	BUFFER_PUBLISH     = 50
-	BUFFER_SUB_CHANNEL = 50
+	idHashLength 		= 8
 )
 
 // ========================================
@@ -60,7 +62,7 @@ type Subscriber struct {
 }
 
 type Message struct {
-	// unique msg hash
+	// unique msg id
 	id        []byte
 	timestamp time.Time
 	Payload   interface{}
@@ -70,7 +72,7 @@ type Message struct {
 // controling subscribers
 // ========================================
 type Action interface {
-	UpdateSubs(*Room)
+	updateSubs(*Room)
 }
 
 type SubscribeAction struct {
@@ -118,9 +120,29 @@ func (r *Room) Unsubscribe(sub *Subscriber) chan bool {
 	r.ActionsChan <- &UnsubscribeAction{sub: *sub, statusChan: &respChan}
 	return respChan
 }
+func (r *Room) Publish(msgs ...interface{}) error {	
+	for _, msg := range msgs{
+		switch msg.(type) {
+		case Message:
+			r.PublishChan <- msg.(Message)
+		case string:
+			r.PublishChan <- NewMessage(msg.(string))
+		default:
+			log.Error().Msgf("Attempt to publish unsupported msg %T", msg)
+			return fmt.Errorf("Unsupported publish type %T", msg)
+		}
+	}
+	return nil
+}
 
-func (r *Room) Publish(msg Message) {
-	r.PublishChan <- msg
+func NewMessage(text string) Message {
+	//create a unique random for id
+	bytes := make([]byte, idHashLength)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		panic(err)
+	}
+	return Message{bytes, time.Now(), text}
 }
 
 func (r *Room) StartRoom() {
@@ -156,16 +178,16 @@ func (s *Subscriber) Stop() {
 
 // Room loop: handles incoming publish and subscription requests
 func (r *Room) Run() {
-	defer r.Cleanup()
+	defer r.cleanup()
 
 	log.Info().Msgf("Starting room %v", r.Name)
 	for {
 		select {
-		case msg := <-r.PublishChan:
+		case msg := <- r.PublishChan:
 			log.Debug().Msgf("Room %v received msg %v", r.Name, msg.Payload)
 			handlePublish(r, msg)
-		case act := <-r.ActionsChan:
-			act.UpdateSubs(r)
+		case act := <- r.ActionsChan:
+			act.updateSubs(r)
 		case <-r.stopChan:
 			log.Info().Msgf("Received close request for room %v", r.Name)
 			return
@@ -176,13 +198,13 @@ func (r *Room) Run() {
 // Internal func
 // ========================================
 
-func (s *SubscribeAction) UpdateSubs(r *Room) {
+func (s *SubscribeAction) updateSubs(r *Room) {
 	log.Info().Msgf("Subscribing new %v to room %v", s.sub.id, r.Name)
 	r.subscribers.Store(s.sub, struct{}{})
 	*s.statusChan <- true
 	close(*s.statusChan)
 }
-func (s *UnsubscribeAction) UpdateSubs(r *Room) {
+func (s *UnsubscribeAction) updateSubs(r *Room) {
 	log.Info().Msgf("Unsubscribing %v from room %v", s.sub.id, r.Name)
 	r.subscribers.Delete(s.sub)
 	*s.statusChan <- true
@@ -202,7 +224,7 @@ func handlePublish(r *Room, msg Message) {
 
 }
 
-func (r *Room) Cleanup() {
+func (r *Room) cleanup() {
 	// inform subscribers of room stop
 	r.subscribers.Range(func(sub, _ interface{}) bool {
 		castSub := sub.(Subscriber)

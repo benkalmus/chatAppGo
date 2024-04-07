@@ -31,6 +31,7 @@ fmt:
 # Run tests
 test:
 	go test ./...
+# go test -v ./...
 
 test_coverage:
 	go test ./... -coverprofile=coverage.out
