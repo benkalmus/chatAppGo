@@ -63,6 +63,13 @@ API decisions
 Check if Room is running? 
 What happens if a Room crashes? 
 
+Room.ctx
+Room.cancel 
+sub := room.NewSubscriber()
+sub.Recv()
+sub.room.ctx
+
+
 
 # Testing
 

@@ -2,10 +2,12 @@ package pubsub_test
 
 import (
 	"chat_app/internal/logger"
-	"chat_app/pkg/pubsub"
+	. "chat_app/pkg/pubsub"
 	"fmt"
 	"os"
 	"sync"
+
+	// "sync"
 	"testing"
 	"time"
 
@@ -20,85 +22,128 @@ func TestMain(m *testing.M) {
     os.Exit(m.Run())
 }
 
-func TestPubSub(t *testing.T) {
-	log.Info().Msgf("Starting test %v", t.Name())
-	testPubSub := pubsub.NewPubSub()
-	testRoom := testPubSub.NewRoom("testRoom", nil)	//with default opts
-	testSub := pubsub.NewSubscriber("testSub")
-	statusChan := testRoom.Subscribe(testSub)
+// func TestPubSub(t *testing.T) {
+// 	log.Info().Msgf("Starting test %v", t.Name())
+// 	testPubSub := NewPubSub()
+// 	testRoom := testPubSub.NewRoom("testRoom", nil)	//with default opts
+// 	testSub := NewSubscriber("testSub")
+// 	err := testSub.Subscribe(testRoom)
+// 	assert.ErrorIs(t, err, nil)
 
-	if testSub.AwaitSubscribe(statusChan, testRoom) != nil {
-		t.Errorf("subscription failed")
-	}
-	// Publish a message on room1
-	testRoom.Publish("hello")
+// 	// Publish a message on room1
+// 	testRoom.Publish("hello")
 
-	//  Wait for one message
-	message := <- testSub.Recv()
-	log.Debug().Msgf("Sub Received: %v\n", message.Payload)
-	assert.Equal(t, "hello", message.Payload)
-}
+// 	//  Wait for one message
+// 	message := <- testSub.Recv()
+// 	log.Debug().Msgf("Sub Received: %v\n", message.Payload)
+// 	assert.Equal(t, "hello", message.Payload)
+// 	testPubSub.StopRoom(testRoom)
+// 	for testPubSub.IsRoomOpen(testRoom) {}
+// }
 
-func TestMultipleRooms(t *testing.T) {
-	log.Info().Msgf("Starting test %v", t.Name())
-	testPubSub := pubsub.NewPubSub()
-	testRoomA := testPubSub.NewRoom("testRoomA", nil)
-	testRoomB := testPubSub.NewRoom("testRoomB", nil)
-	testSubA := pubsub.NewSubscriber("testSub")
-	statusChanA := testRoomA.Subscribe(testSubA)
-	testSubB := pubsub.NewSubscriber("testSub")	//since this is another room, we can have the same name Sub
-	statusChanB := testRoomB.Subscribe(testSubB)
+// func TestSubscribeUnsubscribe(t *testing.T) {
+// 	// ps := &PubSub{}
+// 	// room := &Room{}
+// 	// sub := &Subscriber{}
+// 	ps, room, sub := setupMinimal()
+// 	sub.Subscribe(room)
+// 	room.Publish("hello")
+// 	msgs  := []Message{}
+// 	done := make(chan struct{})
+// 	go subRecvLoop(sub, &msgs, done)
 
-	if testSubA.AwaitSubscribe(statusChanA, testRoomA) != nil {
-		t.Errorf("subscription A failed")
-	}
-	if testSubB.AwaitSubscribe(statusChanB, testRoomB) != nil {
-		t.Errorf("subscription B failed")
-	}
-	// Publish a message on room1
-	MsgA := pubsub.NewMessage("hello")
-	MsgB := pubsub.NewMessage("hello")
-	testRoomA.Publish(MsgA)
-	testRoomB.Publish(MsgB)
+// 	err := sub.Unsubscribe(room)
+// 	assert.Equal(t, nil, err)
+// 	room.Publish("there")
+// 	<-done 
+// 	assert.Equal(t, 1, len(msgs))
+// 	assert.Equal(t, "hello", msgs[0].Payload)
+// 	teardownMinimal(ps, room, sub)
+// }
 
-	//  Wait for one message
-	go subRecvOnce(t, testSubA, MsgA)
-	go subRecvOnce(t, testSubB, MsgB)
-}
 
-func TestSubMultipleMessages(t *testing.T) {
-	ps := testSetup(1)
-	roomAny, ok := ps.Rooms.Load("testRoom_0")
-	if !ok {
-		t.Errorf("room 'testRoom_0' not found")
-	}
-	room, ok := roomAny.(*pubsub.Room)
-	if !ok {
-		t.Errorf("type assertion on room failed")
-	}
-	sub := pubsub.NewSubscriber("testSub")
-	statusChan := room.Subscribe(sub)
-	if sub.AwaitSubscribe(statusChan, room) != nil {
-		t.Errorf("subscription failed")
-	}
+// func TestMultipleRooms(t *testing.T) {
+// 	log.Info().Msgf("Starting test %v", t.Name())
+// 	testPubSub := NewPubSub()
+// 	testRoomA := testPubSub.NewRoom("testRoomA", nil)
+// 	testRoomB := testPubSub.NewRoom("testRoomB", nil)
+// 	testSubA := NewSubscriber("testSub")
+// 	testSubB := NewSubscriber("testSub")	//since this is another room, we can have the same name Sub
+// 	testSubA.Subscribe(testRoomA)
+// 	testSubB.Subscribe(testRoomB)
 
-	m1 := pubsub.NewMessage("hello")
-	m2 := pubsub.NewMessage("there")
-	msgSlice := []pubsub.Message{m1, m2}
-	for _, m := range msgSlice {
-		room.Publish(m)
-	}
-	//TODO, remove sleep by waiting for all messages to arrive before we stop the pubsub
-	time.Sleep(10 * time.Millisecond)
-	ps.StopRoom(room)
-	messageBuffer := []pubsub.Message{}
-	subRecvLoop(sub, &messageBuffer)
-	// room.Publish("hello")
-	// room.Publish("there")
-	assert.Equal(t, msgSlice, messageBuffer)
-}
+// 	// Publish a message on room1
+// 	MsgA := NewMessage("hello")
+// 	MsgB := NewMessage("hello")
+// 	testRoomA.Publish(MsgA)
+// 	testRoomB.Publish(MsgB)
 
-// Some test criteria:
+// 	//  Wait for one message
+// 	go subRecvOnce(t, testSubA, MsgA)
+// 	go subRecvOnce(t, testSubB, MsgB)
+// 	time.Sleep(10 * time.Millisecond)	//TODO
+// 	testPubSub.StopRoom(testRoomA)
+// 	testPubSub.StopRoom(testRoomB)
+// }
+
+// func TestSubMultipleMessages(t *testing.T) {
+// 	ps, room, sub := setupMinimal()
+
+// 	m1 := NewMessage("hello")
+// 	m2 := NewMessage("there")
+// 	msgSlice := []Message{m1, m2}
+// 	for _, m := range msgSlice {
+// 		room.Publish(m)
+// 	}
+// 	// wait for published messages
+// 	messageBuffer := []Message{}
+// 	done := make(chan struct{})
+// 	subRecvLoop(sub, &messageBuffer, done)
+// 	// room.Publish("hello")
+// 	// room.Publish("there")
+// 	<-done
+// 	assert.Equal(t, msgSlice, messageBuffer)
+// 	teardownMinimal(ps, room, sub)
+// }
+
+
+// func TestTrySubscribeToClosedRoom(t *testing.T) {
+// 	testPubSub := NewPubSub()
+// 	testRoom := testPubSub.NewRoom("testRoom", nil)	//with default opts
+// 	realSub := NewSubscriber("RealSub")
+// 	testSub := NewSubscriber("testSub")
+// 	realSub.Subscribe(testRoom)
+
+// 	testPubSub.StopRoom(testRoom)
+// 	// wait for room to close, the sub's channel will be closed when this happens
+// 	_, open := <-realSub.Recv()
+// 	assert.Equal(t, open, false)
+// 	time.Sleep(100 * time.Millisecond)
+// 	err := testSub.Subscribe(testRoom)
+// 	assert.Error(t, err, "room is closed")
+// }
+
+// func TestPublishOnRoomWithSubThatCrashed(t *testing.T) {
+// 	testPubSub := NewPubSub()
+// 	testRoom := testPubSub.NewRoom("testRoom", nil)	//with default opts
+// 	testSub := NewSubscriber("testSub")
+//  	testSub.Subscribe(testRoom)
+// 	// Publish a message on room1
+// 	testRoom.Publish("hello")
+// 	//  Wait for one message
+// 	message := <- testSub.Recv()
+// 	log.Debug().Msgf("Sub Received: %v\n", message.Payload)
+	
+// 	testSub = &Subscriber{} 
+
+// 	// close(testRoom.subscribers.Load("testSub").(chan Message)) //close channel to simulate broken Sub
+// 	testRoom.Publish("test")
+// 	testSub.Subscribe(testRoom) // should work because this subscriber should no longer be subscribed
+
+// }
+
+// Some test ideas:
+
 // Subscriber tries to subscribe to a closed room or non existing
 // Subscriber tries to receive message on closed room
 // Subscriber can only subscribe to one room
@@ -106,42 +151,126 @@ func TestSubMultipleMessages(t *testing.T) {
 // Unsubscribed sub no longer receives messages
 // Subscriber no longer receiving messages on closed room 
 // If a subscriber crashes, dies or is no longer available, it should be removed from the room and publishing should still work to other subscribers
-// Publishing actions should be non-blocking, 
 
+// Publishing actions should be non-blocking, 
 // Publish on a closed or non existing room 
 // Published messages arrive in order, verify with timestamp 
+
+func TestStopRoom(t *testing.T) {
+	pubSub := NewPubSub()
+	room := pubSub.NewRoom("A", nil)
+	errR := pubSub.StopRoom(room)
+	assert.Equal(t, nil, errR)
+	// tries to stop room twice
+	errR = pubSub.StopRoom(room)
+	if assert.Error(t, errR) {
+		assert.Equal(t, fmt.Errorf("room not found"), errR)
+	}
+
+	msg := NewMessage("Hello there")
+	err := room.Publish(msg)		
+	if assert.Error(t, err) {
+		assert.Equal(t, fmt.Errorf("context canceled"), err)
+	}
+	pubSub.Stop()
+}
+func TestStopPubSub(t *testing.T){
+	pubSub := NewPubSub()
+	room := pubSub.NewRoom("A", nil)
+	sub, err := room.NewSubscriber()
+	assert.Equal(t, nil, err)
+	pubSub.Stop()
+	t0 := time.Now()
+	for room.IsAlive() { 
+		if time.Since(t0) > 1 * time.Second {
+			t.Log("Room not closed")
+			t.Fail()
+		}
+	}
+	t0 = time.Now()
+	for sub.IsAlive() {
+		if time.Since(t0) > 1 * time.Second {
+			t.Log("Sub not stopped")
+			t.Fail()
+		}
+	}
+	pubSub.Stop()
+}
+
+func TestSubscriberRecv(t *testing.T) {
+	pubSub := NewPubSub()
+	// opts := RoomOpts{}
+	room := pubSub.NewRoom("A", nil)
+	sub, err := room.NewSubscriber()
+	assert.Equal(t, nil, err)
+	msg := NewMessage("Hello there")
+	errp := room.Publish(msg)	//non blocking
+	assert.Equal(t, nil, errp)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		for m := range sub.Recv() {
+			assert.Equal(t, msg, m)
+		}
+		t.Log("Sub closed")
+		wg.Done()
+	}()
+	errs := room.Unsubscribe(sub)
+	assert.Equal(t, nil, errs)
+	pubSub.StopRoom(room)
+	pubSub.Stop()
+	wg.Wait()
+}
+
+// func TestMultipleSubscriberRecv(t *testing.T){
+// 	pubSub := NewPubSub()
+// 	room := pubSub.NewRoom("A", nil)
+// 	sub, err := room.NewSubscriber()
+// 	assert.Equal(t, nil, err)
+// 	sub2,err2 := room.NewSubscriber()
+// 	assert.Equal(t, nil, err2)
+// 	go sub.RecvUntilClosed()
+// 	go sub2.RecvUntilClosed()
+// 	msgs := []Message{}
+// 	for i := 0; i < 3; i++ {
+// 		msg := NewMessage(fmt.Sprintf("msg_%d", i))
+// 		err := room.Publish(msg)	//non blocking
+// 		msgs = append(msgs, msg)
+// 		assert.Equal(t, nil, err)
+// 	}
+// 	room.Stop()
+// 	for sub.IsAlive() {}
+// 	for sub2.isAlive() {}
+// 	assert.Equal(t, msgs, sub.GetMessages())
+// 	assert.Equal(t, msgs, sub2.GetMessages())
+// 	pubSub.Stop()
+// }
+
+
+
+
 
 // Helper Funcs
 // ===============================================
 
-// Setups a pub sub, and a slice of rooms depending on cap
-func testSetup(numRooms int) *pubsub.PubSub {
-	ps := pubsub.NewPubSub()
-	// var sliceOfRooms = make([]*pubsub.Room, numRooms)
-	for i := 0; i < numRooms; i++ {
-		ps.NewRoom(fmt.Sprintf("testRoom_%d", i), nil)
+
+func setupMinimal() (ps *PubSub, room *Room, sub *Subscriber) {
+	ps = NewPubSub()
+	room = ps.NewRoom("room", nil)
+	sub, err := room.NewSubscriber()
+	if err != nil {
+		log.Fatal().Msgf("Failed to create subscriber: %v", err)
 	}
-	return ps
+	return 
 }
 
-func testTeardown(ps *pubsub.PubSub) {
-	wg := sync.WaitGroup{}
-
-	//close all rooms async
-	ps.Rooms.Range(func(key, value interface{}) bool {
-		wg.Add(1)
-		room := value.(*pubsub.Room)
-		go func() {
-			ps.StopRoom(room)
-			wg.Done()
-		}()
-		return true
-	})
-	wg.Wait()
-	
+func teardownMinimal(ps *PubSub, room *Room, sub *Subscriber) {
+	// room.Unsubscribe(sub)
+	// ps.StopRoom(room)
+	ps.Stop()
 }
 
-func subRecvOnce(t *testing.T, sub *pubsub.Subscriber, expected pubsub.Message) {
+func subRecvOnce(t *testing.T, sub *Subscriber, expected Message) {
 	select  {
 	case msg := <- sub.Recv():
 		log.Debug().Msgf("Sub '%v' Received '%v'", sub.Id, msg.Payload)
@@ -153,11 +282,25 @@ func subRecvOnce(t *testing.T, sub *pubsub.Subscriber, expected pubsub.Message) 
 	}
 }
 
-func subRecvLoop(sub *pubsub.Subscriber, msgs *[]pubsub.Message) {
-	for message := range sub.Recv() {
-		log.Debug().Msgf("Sub '%v' Received '%v'", sub.Id, message.Payload)
-		m := message
-		*msgs = append(*msgs, m)
+func subRecvLoop(sub *Subscriber, msgs *[]Message, done chan struct{}) {
+	for {
+		select {
+		case message, open := <-sub.Recv(): 
+			if !open {
+				log.Debug().Msgf("Sub '%v' room closed '%v'", sub.Id, sub.Room)
+				close(done)
+				return
+			}
+
+			log.Debug().Msgf("Sub '%v' Received '%v'", sub.Id, message.Payload)
+			m := message
+			*msgs = append(*msgs, m)
+		case <-time.After(1 * time.Second):
+			close(done)
+			return 
+		}
 	}
-	log.Debug().Msgf("Sub '%v' room closed '%v'", sub.Id, sub.Room)
 }
+
+
+
