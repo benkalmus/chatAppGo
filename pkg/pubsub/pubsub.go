@@ -30,18 +30,19 @@ type PubSub struct {
 }
 
 type Room struct {
-	Name string
+	Name 				string
 	// for async publishing of messages
-	PublishChan chan Message
-	ctx 		context.Context
-	cancel 		context.CancelFunc
-	subscribers sync.Map // map[*Subscriber](chan Message)
-	MessageCount uint32
+	PublishChan 		chan Message
+	ctx 				context.Context
+	cancel 				context.CancelFunc
+	subscribers 		sync.Map // map[*Subscriber](chan Message)
+	subChannelBuffer	int		// subscriber will will receive a chan with this buffer size
+	MessageCount 		uint32
 }
 
 type RoomOpts struct {
-	PublishChanBuffer int
-	ActionsChanBuffer int 
+	PublishChanBuffer 	int
+	SubChanBuffer 		int 
 }
 
 
@@ -84,7 +85,8 @@ func (ps *PubSub) Stop() {
 func (ps *PubSub) NewRoom(name string, opts *RoomOpts) *Room {
 	if opts == nil {
 		opts = &RoomOpts{
-			PublishChanBuffer: buffer_publish_chan,
+			PublishChanBuffer: 	buffer_publish_chan,
+			SubChanBuffer: 		buffer_sub_channel,
 		}
 	}
 
@@ -95,6 +97,7 @@ func (ps *PubSub) NewRoom(name string, opts *RoomOpts) *Room {
 		ctx:    		ctx,
 		cancel:			cancel,
 		subscribers: 	sync.Map{},
+		subChannelBuffer: opts.SubChanBuffer,
 	}
 	ps.Rooms.Store(name, room)
 	ready := make(chan struct{})
@@ -211,7 +214,7 @@ func (r *Room) NewSubscriber() (*Subscriber, error) {
 		return nil, fmt.Errorf("room is closed")
 	default:
 	}
-	RecvChan := make(chan Message, buffer_sub_channel) 
+	RecvChan := make(chan Message, r.subChannelBuffer) 
 	sub := &Subscriber{
 		Id:       	"todo",
 		RecvChan: 	RecvChan,
@@ -261,10 +264,12 @@ func handlePublish(r *Room, msg Message) {
 		go func(){
 			select {	//non blocking send
 			case subChan <- msg:
-			default:
-				//TODO think about how we handle slow readers or dead readers
+			case <-time.After(5 * time.Millisecond):
+			// default:
+				//TODO think about how we handle slow readers or dead readers, maybe add a timeout value before kicking off
 				//subscriber doesn't exist or is too slow, let's remove them from list
 				r.Unsubscribe(castSub)
+				log.Warn().Msgf("room '%v' force unsub slow reader '%v'", r.Name, castSub.Id)
 			}
 			wg.Done()
 		}()
