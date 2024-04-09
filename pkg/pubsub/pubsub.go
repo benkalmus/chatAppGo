@@ -67,6 +67,7 @@ type Message struct {
 // ========================================
 
 // PubSub
+// ========================================
 func NewPubSub() *PubSub {
 	return &PubSub{
 		Rooms: sync.Map{},
@@ -80,8 +81,6 @@ func (ps *PubSub) Stop() {
 	})
 }
 
-// PubSub
-// ========================================
 func (ps *PubSub) NewRoom(name string, opts *RoomOpts) *Room {
 	if opts == nil {
 		opts = &RoomOpts{
@@ -113,9 +112,17 @@ func (ps *PubSub) StopRoom(r *Room) error {
 	log.Info().Msgf("Sending stop request to room '%v'", r.Name)
 	r.cancel()
 	//for r.IsAlive() {}
-	log.Debug().Msgf("Waiting for room '%v' to close", r.Name)
+	// log.Debug().Msgf("Waiting for room '%v' to close", r.Name)
 	ps.Rooms.Delete(r.Name)
 	return nil
+}
+
+func (ps *PubSub) FindRoom(name string) (*Room, error) {
+	room, exists := ps.Rooms.Load(name)
+	if !exists {
+		return nil, fmt.Errorf("room not found")
+	}
+	return room.(*Room), nil
 }
 
 func (r *Room) IsAlive() bool {
@@ -138,12 +145,17 @@ func (r *Room) Run(ready chan struct{}) {
 	close(ready)
 	for {
 		select {
-		case <-r.ctx.Done():
-			log.Debug().Msgf("'%v' received context done", r.Name)
-			return
 		case msg := <-r.PublishChan:
 			r.MessageCount ++
 			handlePublish(r, msg)
+		default:
+			// waiting on ctx.Done to default: ensures that all buffered messages are sent, then close the room
+			select{
+			case <-r.ctx.Done():
+				log.Debug().Msgf("'%v' received context done", r.Name)
+				return
+			default:
+			}
 		}
 	}
 }

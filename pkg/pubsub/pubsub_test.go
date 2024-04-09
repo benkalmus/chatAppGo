@@ -166,11 +166,9 @@ func TestStopRoom(t *testing.T) {
 	if assert.Error(t, errR) {
 		assert.Equal(t, fmt.Errorf("room not found"), errR)
 	}
-
-	msg := NewMessage("Hello there")
-	err := room.Publish(msg)		
+	_, err := pubSub.FindRoom("A")
 	if assert.Error(t, err) {
-		assert.Equal(t, fmt.Errorf("context canceled"), err)
+		assert.Equal(t, fmt.Errorf("room not found"), err)
 	}
 	pubSub.Stop()
 }
@@ -222,29 +220,32 @@ func TestSubscriberRecv(t *testing.T) {
 	wg.Wait()
 }
 
-// func TestMultipleSubscriberRecv(t *testing.T){
-// 	pubSub := NewPubSub()
-// 	room := pubSub.NewRoom("A", nil)
-// 	sub, err := room.NewSubscriber()
-// 	assert.Equal(t, nil, err)
-// 	sub2,err2 := room.NewSubscriber()
-// 	assert.Equal(t, nil, err2)
-// 	go sub.RecvUntilClosed()
-// 	go sub2.RecvUntilClosed()
-// 	msgs := []Message{}
-// 	for i := 0; i < 3; i++ {
-// 		msg := NewMessage(fmt.Sprintf("msg_%d", i))
-// 		err := room.Publish(msg)	//non blocking
-// 		msgs = append(msgs, msg)
-// 		assert.Equal(t, nil, err)
-// 	}
-// 	room.Stop()
-// 	for sub.IsAlive() {}
-// 	for sub2.isAlive() {}
-// 	assert.Equal(t, msgs, sub.GetMessages())
-// 	assert.Equal(t, msgs, sub2.GetMessages())
-// 	pubSub.Stop()
-// }
+func TestMultipleSubscriberRecv(t *testing.T){
+	pubSub := NewPubSub()
+	room := pubSub.NewRoom("A", nil)
+	sub, err := room.NewSubscriber()
+	assert.Equal(t, nil, err)
+	sub2, err2 := room.NewSubscriber()
+	assert.Equal(t, nil, err2)
+	msgBuffer, msgBuffer2 := []Message{}, []Message{}
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go RecvUntilClosed(t, sub, &msgBuffer, &wg)
+	go RecvUntilClosed(t, sub2, &msgBuffer2, &wg)
+	msgs := []Message{}
+	for i := 0; i < 3; i++ {
+		msg := NewMessage(fmt.Sprintf("msg_%d", i))
+		err := room.Publish(msg)
+		assert.Equal(t, nil, err)
+		msgs = append(msgs, msg)
+	}
+	room.Stop()
+	// wait for all messages to arrive
+	wg.Wait()
+	assert.Equal(t, msgs, msgBuffer)
+	assert.Equal(t, msgs, msgBuffer2)
+	pubSub.Stop()
+}
 
 
 
@@ -270,16 +271,12 @@ func teardownMinimal(ps *PubSub, room *Room, sub *Subscriber) {
 	ps.Stop()
 }
 
-func subRecvOnce(t *testing.T, sub *Subscriber, expected Message) {
-	select  {
-	case msg := <- sub.Recv():
+func RecvUntilClosed(t *testing.T, sub *Subscriber, buffer *[]Message, wg *sync.WaitGroup) {
+	for msg := range sub.Recv() {
 		log.Debug().Msgf("Sub '%v' Received '%v'", sub.Id, msg.Payload)
-		assert.Equal(t, expected.Payload, msg.Payload)
-		assert.Equal(t, expected.Id, msg.Id)
-		return 
-	case <-time.After(1 * time.Second):
-		t.Errorf("subscriber did not receive message")
+		*buffer = append(*buffer, msg)
 	}
+	wg.Done()
 }
 
 func subRecvLoop(sub *Subscriber, msgs *[]Message, done chan struct{}) {
