@@ -3,3 +3,5 @@ go.sum
 logs/
 bin/
 history/
+.vscode
+snippets
