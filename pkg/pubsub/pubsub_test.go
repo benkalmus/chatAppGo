@@ -85,18 +85,25 @@ func Test_subscriber_recv(t *testing.T) {
 	assert.Nil(t, errp)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	go func() {
-		for m := range sub.Recv() {
-			assert.Equal(t, msg, m)
-		}
+	msgChan := make(chan Message, 1)
+	go func(ch chan Message) {
+		m := <- sub.Recv()
+		ch <- m
 		t.Log("Sub closed")
+		close(ch)
 		wg.Done()
-	}()
+	}(msgChan)
+	wg.Wait()
 	errs := room.Unsubscribe(sub)
 	assert.Nil(t, errs)
 	pubSub.StopRoom(room)
 	pubSub.Stop()
-	wg.Wait()
+	select {
+	case m := <-msgChan:
+		assert.Equal(t, msg, m)
+	case <-time.After(time.Second):
+		t.Fail()
+	}
 }
 
 func Test_multiple_subscriber_recv(t *testing.T){

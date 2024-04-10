@@ -49,7 +49,7 @@ type RoomOpts struct {
 
 
 type Subscriber struct {
-	Id   		string
+	Id   		[]byte
 	// pointer to Room this Subscriber belongs to
 	Room 		*Room 
 	//Storing channels in the Room instead of Subscribers. Then when a sub subscribes to a room, a channel is created for it with and converted to receive only with (<-chan Message)(RecvChannel)
@@ -201,11 +201,7 @@ func (r *Room) Publish(msgs ...interface{}) error {
 
 func NewMessage(text string) Message {
 	//create a unique random for id
-	bytes := make([]byte, idHashLength)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		panic(err)
-	}
+	bytes := generateId()
 	return Message{bytes, time.Now(), text}
 }
 
@@ -220,7 +216,7 @@ func (r *Room) NewSubscriber() (*Subscriber, error) {
 	}
 	RecvChan := make(chan Message, r.subChannelBuffer) 
 	sub := &Subscriber{
-		Id:       	"todo",
+		Id:       	generateId(),
 		RecvChan: 	RecvChan,
 		Room:     	r,
 		isAlive:  	true,
@@ -272,8 +268,11 @@ func handlePublish(r *Room, msg Message) {
 				//TODO think about how we handle slow readers or dead readers, maybe add a timeout value before kicking off
 				//subscriber doesn't exist or is too slow, let's remove them from list
 				asrtSub := sub.(*Subscriber)
-				r.Unsubscribe(asrtSub)
 				log.Warn().Msgf("room '%v' force unsub slow reader '%v'", r.Name, asrtSub.Id)
+				err := r.Unsubscribe(asrtSub)
+				if err != nil {
+					log.Error().Msgf("unable to unsub '%v' due to '%v'", asrtSub.Id, err)
+				}
 			}
 			wg.Done()
 		}()
@@ -298,4 +297,13 @@ func (r *Room) cleanup() {
 	// Close all channels
 	close(r.PublishChan)
 	log.Info().Msgf("Cleaned and closed room '%v'", r.Name)
+}
+
+func generateId() []byte {
+	bytes := make([]byte, idHashLength)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		panic(err)
+	}
+	return bytes
 }
