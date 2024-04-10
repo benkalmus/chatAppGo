@@ -154,6 +154,7 @@ func Test_non_consuming_subscriber_removed_from_room(t *testing.T) {
 	opts := &RoomOpts{
 		PublishChanBuffer: 	1,
 		SubChanBuffer: 		1,		// channel will be blocking after 1 message
+		SubscriberTimeoutMs: 0,		//very short kick time
 	}
 	room := pubSub.NewRoom("A", opts)
 	inactiveSub, err := room.NewSubscriber()
@@ -170,7 +171,7 @@ func Test_non_consuming_subscriber_removed_from_room(t *testing.T) {
 	msgBuffer := []Message{}
 	go RecvUntilClosed(t, activeSub, &msgBuffer, &wg)
 
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	// inactive sub should be removed from the room
 	alive := inactiveSub.IsAlive()
 	assert.Equal(t, false, alive)

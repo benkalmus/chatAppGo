@@ -15,10 +15,10 @@ type ActionType int32
 
 const (
 	//defaults
-	buffer_publish_chan = 50
-	buffer_sub_channel  = 50
-
-	idHashLength 		= 8
+	buffer_publish_chan 			= 50
+	buffer_sub_channel  			= 50
+	subscriber_timeout_ms uint32	= 5 
+	idHashLength 					= 8
 )
 
 // ========================================
@@ -38,11 +38,13 @@ type Room struct {
 	subscribers 		sync.Map // map[*Subscriber](chan Message)
 	subChannelBuffer	int		// subscriber will will receive a chan with this buffer size
 	MessageCount 		uint32
+	subscriberTimeoutMs	uint32	//grace period given to slow consuming subscribers, before kicking them off
 }
 
 type RoomOpts struct {
 	PublishChanBuffer 	int
 	SubChanBuffer 		int 
+	SubscriberTimeoutMs	uint32
 }
 
 
@@ -85,19 +87,21 @@ func (ps *PubSub) Stop() {
 func (ps *PubSub) NewRoom(name string, opts *RoomOpts) *Room {
 	if opts == nil {
 		opts = &RoomOpts{
-			PublishChanBuffer: 	buffer_publish_chan,
-			SubChanBuffer: 		buffer_sub_channel,
+			PublishChanBuffer: 		buffer_publish_chan,
+			SubChanBuffer: 			buffer_sub_channel,
+			SubscriberTimeoutMs:	subscriber_timeout_ms,
 		}
 	}
 
     ctx, cancel := context.WithCancel(context.Background())
 	room := &Room{
 		Name: name,
-		PublishChan: 	make(chan Message, opts.PublishChanBuffer),
-		ctx:    		ctx,
-		cancel:			cancel,
-		subscribers: 	sync.Map{},
-		subChannelBuffer: opts.SubChanBuffer,
+		PublishChan: 			make(chan Message, opts.PublishChanBuffer),
+		ctx:    				ctx,
+		cancel:					cancel,
+		subscribers: 			sync.Map{},
+		subChannelBuffer: 		opts.SubChanBuffer,
+		subscriberTimeoutMs: 	opts.SubscriberTimeoutMs,
 	}
 	ps.Rooms.Store(name, room)
 	ready := make(chan struct{})
@@ -258,18 +262,18 @@ func handlePublish(r *Room, msg Message) {
 	//iterate over sync.Map in r.subscribers
 	wg := sync.WaitGroup{}
 	r.subscribers.Range(func(sub, channel interface{}) bool {
-		castSub := sub.(*Subscriber)
-		subChan := channel.(chan Message)
 		wg.Add(1)
 		go func(){
-			select {	//non blocking send
+			subChan := channel.(chan Message)
+			select {	//non-blocking send in a select block
 			case subChan <- msg:
-			case <-time.After(5 * time.Millisecond):
+			case <-time.After(time.Duration(r.subscriberTimeoutMs) * time.Millisecond):
 			// default:
 				//TODO think about how we handle slow readers or dead readers, maybe add a timeout value before kicking off
 				//subscriber doesn't exist or is too slow, let's remove them from list
-				r.Unsubscribe(castSub)
-				log.Warn().Msgf("room '%v' force unsub slow reader '%v'", r.Name, castSub.Id)
+				asrtSub := sub.(*Subscriber)
+				r.Unsubscribe(asrtSub)
+				log.Warn().Msgf("room '%v' force unsub slow reader '%v'", r.Name, asrtSub.Id)
 			}
 			wg.Done()
 		}()
