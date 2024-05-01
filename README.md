@@ -2,10 +2,11 @@
 
 ## Introduction
 
-This app is intended to be a simple message broker (pub-sub) implementation in golang.
+This app is intended to be an experimenting excercise in golang to create a message broker (pub-sub) implementation with some surrounding feature layers (listed below).
 
+### Implementation in `pkg/pubsub/`
 
-## Features
+## Features (TODO)
 
 - Asynchronous message passing
   - Buffered Publish and Subscribe
@@ -32,14 +33,8 @@ This app is intended to be a simple message broker (pub-sub) implementation in g
 
 ## Asynchronous Message broker
 
-Message `Broker` consists of many `Rooms`. Each `Room` is a process containing a map of `Subscriber` channels and `Publisher` channel.
-`Publisher` channel is used to asynchronously receive `Message`s, which are stored in-memory by the `Room` until it is free to publish downstream. A `room` may be busy during a `subscribe` or `unsubscribe` operation, in which case it will lock the `Subscriber` slice until it is done. Messages during that time are buffered and processed when unlocked. 
-
-`Subscriptions` are done async and buffered, as to be processed later because, in this implementation we wish Publishing to take higher priority. If lots of messages are being published, a timer is created to force the processing of subscriptions.
-
-TODO:
-- keep the implementation as simple as possible, do not worry about multiple room subscribers, that can be added as a wrapper for the existing API. such as, MultiSub containg a slice of []Subscriber instances.
-- do not worry about message data type, but add useful metadata like Timestamps
+Message `Broker` consists of many `Rooms`. Each `Room` is a goroutine containing a map of `Subscriber` channels and `Publisher` channels. Messaging is handled by a `chan` which is returned on `Subscribe` to a `Room`.
+Publishing is designed to be non-blocking, therefore Subscribers too slow to read messages are unsubscribed from a Room.
 
 ## WebSockets 
 
@@ -56,19 +51,19 @@ Websocket connection limits by IP
 
 ## Persistent chat
 
-Creating a backend for our project.
-Consider methods of storing and restoring room history. KV or SQL? 
+Creating a DB backend for this project.
+Consider methods of storing and restoring room history. 
 
-Some rooms may have a Permanent Storage subscriber which stores data to an existing entry in a DB. When a client connects, they may subscribe to a room and also request chat history if available. This side of the project will require a completely different design pattern to the pub-sub mechanism. If a chat has lots of history, it's more efficient to load it based on timestamps, e.g: now - 1 hour.
+Some rooms may have a Permanent Storage subscriber that stores data to an existing entry in a DB. When a client connects, they may subscribe to a room and also request chat history if available. This side of the project will require another design pattern. If a chat has lots of history, it's more efficient to load it in chunks via timestamps, e.g: now - 1 hour.
 
 ## User Auth
 
-Creating a front end for our project. 
-Although rate limiting can reduce malicious users spamming messages, the app is still vulnerable to loosely termed DDoS attacks where a bad actor spawns web socket clients programmatically, allowing actors to spam many more messages per each new connection. 
+Creating a front end for this project. 
+Although rate limiting can reduce malicious users spamming messages, the app is still vulnerable to loosely termed denial of service where a bad actor spawns web socket clients programmatically, allowing actors to spam many messages per each new connection. 
 
-To prevent this, we'll need to authenticate each new connection with some kind of credentials:
+To prevent this, we'll need to authenticate each new connection with some kind of credentials, e.g:
   - session token & cookies 
-  - full on Users DB: username, email & password
+  - User Subscription DB: username, email & password with email verification links
   - challenge-response auth. captcha. Before a WS connection can be opened, the user must satisfy the challenge.
 
 Some of these solutions will require data collection, and hence may be encroaching EU data protection laws. 

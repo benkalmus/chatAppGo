@@ -167,10 +167,12 @@ func (r *Room) Run(ready chan struct{}) {
 	}
 }
 
+// Cancels Room context, closes all channels stops goroutine
 func (r *Room) Stop() {
 	r.cancel()
 }
 
+// Publish accepts a Message{} or string as input. 
 func (r *Room) Publish(msgs ...interface{}) error {	
 
 	for _, msg := range msgs {

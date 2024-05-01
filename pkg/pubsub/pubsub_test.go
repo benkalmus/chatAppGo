@@ -208,23 +208,6 @@ func Test_subscribe_dead_room(t *testing.T) {
 // Helper Funcs
 // ===============================================
 
-
-func setupMinimal() (ps *PubSub, room *Room, sub *Subscriber) {
-	ps = NewPubSub()
-	room = ps.NewRoom("room", nil)
-	sub, err := room.NewSubscriber()
-	if err != nil {
-		log.Fatal().Msgf("Failed to create subscriber: %v", err)
-	}
-	return 
-}
-
-func teardownMinimal(ps *PubSub, room *Room, sub *Subscriber) {
-	// room.Unsubscribe(sub)
-	// ps.StopRoom(room)
-	ps.Stop()
-}
-
 func RecvUntilClosed(t *testing.T, sub *Subscriber, buffer *[]Message, wg *sync.WaitGroup) {
 	for msg := range sub.Recv() {
 		log.Debug().Msgf("Sub '%v' Received '%v'", sub.Id, msg.Payload)

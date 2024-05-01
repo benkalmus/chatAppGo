@@ -1,4 +1,4 @@
-# Detailing my journey in creating a Chat App in Go
+# Creating a Chat App in Go
 
 Before I start writing a Chat App application, I want to nail some foundations that will ease in designing and building this application as it grows in complexity. Firstly, let's setup a project directory structure where I'll place my files, I want to organise my packages, tests, docs and other non-source code files logically and find them their own places. Here's my current dir hierarchy 
 
